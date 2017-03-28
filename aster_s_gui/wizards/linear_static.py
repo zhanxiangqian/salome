@@ -1,0 +1,358 @@
+﻿#coding: utf-8 -*-
+"""Qt wizard on linear static study case
+"""
+
+from PyQt4 import QtGui as qt
+from PyQt4 import QtCore as qtc
+import aster_s.salome_tree as ST
+import aster_s.wizards.linear_static as LS
+import aster_s.wizards.common as WCD
+import aster_s_gui
+import aster_s_gui.wizards.common as WC
+from aster_s.utils import log_gui
+
+
+def is_valid_mesh(cexp, mesh, mod):
+    """A valid mesh needs to have groups for pressure"""
+    is_valid = True
+    log_gui.debug("is_valid_mesh %s / %s", mesh, mod)
+    if not mesh:
+        mess = "A mesh is required"
+        mod.launch(aster_s_gui.ERROR, mess)
+        is_valid = False
+        return is_valid
+    if not cexp.give("pressure").find_groups(mesh):
+        mess = "At least a group without nodes need to be defined " \
+               "on the selected object"
+        mod.launch(aster_s_gui.ERROR, mess)
+        is_valid = False
+    return is_valid
+
+
+class SMeshExp(WC.CompoExp):
+    """Linear static SMESH explorator
+    """
+
+    def __init__(self):
+        WC.CompoExp.__init__(self)
+        SMesh = ST.SMeshExplorator
+        exp = SMesh()
+        no_grp = exp.add_group(LS.GRP_NO)
+        no_grp.register((2, 3), [SMesh.node])
+        ma_grp = exp.add_group(LS.GRP_MA)
+        ma_grp.register((2, 3), [SMesh.edge])
+        ma_grp.register((3,), [SMesh.face, SMesh.volume])
+        self.register("boundaries", exp)
+        self.register("pressure", ma_grp)
+
+    def validate(self, mesh, mod):
+        """A valid mesh needs to have mesh groups for defining pressure"""
+        return is_valid_mesh(self, mesh, mod)
+
+
+class GeomExp(WC.CompoExp):
+    """Linear static GEOM explorator
+    """
+
+    def __init__(self):
+        WC.CompoExp.__init__(self)
+        Geom = ST.GeomExplorator
+        exp = Geom()
+        no_grp = exp.add_group(LS.GRP_NO)
+        no_grp.register((2, 3), [Geom.vertex])
+        ma_grp = exp.add_group(LS.GRP_MA)
+        ma_grp.register((2, 3), [Geom.edge])
+        ma_grp.register((3,), [Geom.face, Geom.shell])
+        self.register("boundaries", exp)
+        self.register("pressure", ma_grp)
+
+    def validate(self, mesh, mod):
+        """A valid geometry needs to have mesh groups for defining pressure"""
+        return is_valid_mesh(self, mesh, mod)
+
+
+class PressurePage(WC.WizardPage):
+    """Wizard page on pressure loading
+    """
+
+    def cleanupPage(self):
+        """Clean page in case user navigates"""
+        WC.WizardPage.cleanup(self)
+
+    def initializePage(self):
+        """Query the model on meshes"""
+        WC.WizardPage.initialize(self)
+        self.page.use(qt.QVBoxLayout())
+        exp = self.give_field("exp-store").give_exp("pressure")
+        grps = exp.find_groups(self.give_field("mesh"))
+        dims = [(u"Pressure", 1.)]
+        tit = u"Adding pressure on meshes groups"
+        # The last groups should be seen first
+        grps.reverse()
+        WC.add_condition_selector(self, grps, dims, "pressure-loading*", tit)
+
+
+def add_pressure_page(wiz):
+    """Add page on pressure loading"""
+    page = wiz.add_page(u"Boundaries conditions", PressurePage())
+    page.register("pressure-loading*", None)
+
+
+class FinalPage(WC.FinalPage):
+    """Build case
+    """
+
+    def validatePage(self):
+        """Validate the wizard"""
+        getf = self.give_field
+
+        comm = LS.CommWriter()
+        comm.use(LS.Modelisation(getf("model")))
+        comm.use(LS.YoungModulus(self.get_float("young-modulus")))
+        comm.use(LS.PoissonRatio(self.get_float("poisson-ratio")))
+        mech_consts = comm.use(LS.MechConstraints())
+        bound_conds = mech_consts.add(LS.BoundConds())
+        mesh = getf("mesh")
+        exp = getf("exp-store").give_exp("boundaries")
+
+        if not getf("pressure-loading") and not getf("group-boundaries"):
+            mess = "Pressure and/or boundary conditions are required "
+            self._mod.launch(aster_s_gui.ERROR, mess)
+            return False
+        else :
+            if getf("group-boundaries"):
+                for cond in getf("group-boundaries"):
+                    gname = str(cond[0])
+                    grp_type = exp.give_group_key(mesh, gname)
+                    bound_conds.add(LS.DplFromName(grp_type, gname, *cond[1:]))
+            else:
+                mess = "Warning: You have not defined boundary conditions "
+                self._mod.launch(aster_s_gui.INFO, mess)
+            pressure = mech_consts.add(LS.Pressure())
+            if getf("pressure-loading"):
+                for gname, val in getf("pressure-loading"):
+                    pressure.add(LS.GrpPres(str(gname), val))
+            else:
+                mess = "Warning: You have not defined pressure "
+                self._mod.launch(aster_s_gui.INFO, mess)
+            comm.write(self.get_str("command-file"))
+            self.add_case("linear-static")
+            return True
+            
+def Creat_Mesh_Select_DockWdg(mod):
+   desktop = mod.give_qtwid()
+   if desktop is None:
+    mess = "This script needs to be run from the Salome GUI menu " \
+           "by using 'File -> Load Script'."
+    raise ValueError(mess)
+   else:    
+    #exp_store = WC.ExpStore()
+    #exp_store.register(WC.ExpStore.smesh, SMeshExp())
+    #exp_store.register(WC.ExpStore.geom, GeomExp())
+    #lay = qt.QVBoxLayout()
+    #wdg.setLayout(lay)
+    #verticalSpacer = qt.QSpacerItem(20, 40, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
+    #lay.addItem(verticalSpacer)
+    #lay.addWidget(qt.QLabel("Select a mesh from the Salome object browser"))
+    dockwdg = WC.CustomDockWidget(u"Isotropic linear elastic study", u"Mesh selection", desktop)
+    dockwdg.setWindowTitle("Mesh selection")
+    wdg = WC.MeshWdg(mod,dockwdg)
+    dockwdg.setCenterWidget(wdg)
+    desktop.addDockWidget(qtc.Qt.RightDockWidgetArea,dockwdg)
+    
+def Creat_Model_Definition_DockWdg(desktop):
+   if desktop is None:
+    mess = "This script needs to be run from the Salome GUI menu " \
+           "by using 'File -> Load Script'."
+    raise ValueError(mess)
+   else:
+    wdg = WC.WizardPage()
+    lay = qt.QVBoxLayout()
+    wdg.setLayout(lay)
+    verticalSpacer = qt.QSpacerItem(20, 40, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
+    lay.addItem(verticalSpacer)
+    lay.addWidget(qt.QLabel("What kind of model do you want to work on?"))
+    wfield = WC.WizardField(wdg,"abc",0)
+    lay.addWidget(WC.ModelSelection(wfield, [
+        WC.Mode3D,
+        WC.PlaneStress,
+        WC.PlaneStrain,
+        WC.AxisSymmetric,]))
+    dockwdg = WC.CustomDockWidget(u"Isotropic linear elastic study", u"Model definition", desktop)
+    dockwdg.setWindowTitle(u"Model definition")
+    dockwdg.setCenterWidget(wdg)
+    desktop.addDockWidget(qtc.Qt.RightDockWidgetArea,dockwdg)
+
+def Creat_Material_Property_DockWdg(desktop):
+   if desktop is None:
+    mess = "This script needs to be run from the Salome GUI menu " \
+           "by using 'File -> Load Script'."
+    raise ValueError(mess)
+   else:
+    dockwdg = WC.CustomDockWidget(u"Isotropic linear elastic study", u"Material properties", desktop)
+    dockwdg.setWindowTitle("Material properties")
+    wdg = WC.Material_Wdg(dockwdg)
+    dockwdg.setCenterWidget(wdg)
+    desktop.addDockWidget(qtc.Qt.RightDockWidgetArea,dockwdg)
+
+def Creat_Boundary_Degrees_Conditions_DockWdg(mod):
+   desktop = mod.give_qtwid()
+   if desktop is None:
+    mess = "This script needs to be run from the Salome GUI menu " \
+           "by using 'File -> Load Script'."
+    raise ValueError(mess)
+   else:
+    dockwdg = WC.CustomDockWidget(u"Isotropic linear elastic study", u"Boundaries Degrees conditions", desktop)
+    dockwdg.setWindowTitle("Boundaries Degrees conditions")
+    exp_store = WC.ExpStore()
+    exp_store.register(WC.ExpStore.smesh, SMeshExp())
+    exp_store.register(WC.ExpStore.geom, GeomExp())
+    exp_store.use(WC.ExpStore.geom)
+    exp = exp_store.give_exp("boundaries")
+    boundarywdg = WC.Bounaries_Conditions_Wdg(mod,exp,"boundaries",dockwdg)
+    dockwdg.setCenterWidget(boundarywdg)
+    desktop.addDockWidget(qtc.Qt.RightDockWidgetArea,dockwdg)
+    
+def Creat_Boundary_Pressure_Conditions_DockWdg(mod):
+   desktop = mod.give_qtwid()
+   if desktop is None:
+    mess = "This script needs to be run from the Salome GUI menu " \
+           "by using 'File -> Load Script'."
+    raise ValueError(mess)
+   else:
+    dockwdg = WC.CustomDockWidget(u"Isotropic linear elastic study", u"Boundaries Pressure conditions", desktop)
+    dockwdg.setWindowTitle("Boundaries Pressure conditions")
+    exp_store = WC.ExpStore()
+    exp_store.register(WC.ExpStore.smesh, SMeshExp())
+    exp_store.register(WC.ExpStore.geom, GeomExp())
+    exp_store.use(WC.ExpStore.geom)
+    exp = exp_store.give_exp("pressure")
+    boundarywdg = WC.Bounaries_Conditions_Wdg(mod,exp,u"pressure",dockwdg)
+    dockwdg.setCenterWidget(boundarywdg)
+    desktop.addDockWidget(qtc.Qt.RightDockWidgetArea,dockwdg)
+SIG = qtc.SIGNAL
+connect = qtc.QObject.connect
+
+class AstLSConditionsSelector(WC.AstConditionsSelector):
+    """Allow to set conditions on proposed groups.
+    The conditions are built in a list of lists given to the WizardField.
+    """
+    def __init__(self, data, condition_type, parent):#condition_type 0 表示用于自由度， 1 表示用于压力zxq 2017/2/9
+        WC.AstConditionsSelector.__init__(self, data, condition_type, parent)
+
+class LSData():
+    def __init__(self,mod):
+        self.modellist = WCD.Model_Type_List(WCD.Analysis_Type.Linear_Elatic)
+        self.itemindex = "defult"
+        
+        self.mesh = None
+        self.mod = mod
+        exp_store = WC.ExpStore()
+        exp_store.register(WC.ExpStore.smesh, SMeshExp())
+        exp_store.register(WC.ExpStore.geom, GeomExp())
+        self.exp_store = exp_store
+        self.grouptypesel = 0
+        
+    def get_dim(self):
+        return self.get_sel_itm().dim
+        
+    def get_sel_itm(self):
+        return (self.modellist.get_item(self.itemindex))
+        
+
+class Create_Dock(qt.QDockWidget):
+    def __init__(self, mod):
+        desktop = mod.give_qtwid()
+        qt.QDockWidget.__init__(self, desktop)
+        self.data = LSData(mod)
+        self.exp_store = self.data.exp_store
+        
+        self.setWindowTitle(u"Linear static")
+        centralWidget = qt.QWidget(self)
+        vlayout = qt.QVBoxLayout()
+        centralWidget.setLayout(vlayout)
+        label_for_model = qt.QLabel(u"What kind of model do you want to work on?",self)
+        vlayout.addWidget(label_for_model)
+        
+        model_sel = WC.AstModelSel(self.data,self)
+        model_sel.place(vlayout)
+       
+        mesh_sel = WC.AstMeshSel(self.data,self)
+        mesh_sel.place(vlayout)
+        model_sel.add_related_component(mesh_sel)
+        
+        group_sel = WC.AstGroupTypeSel(self.data,self)
+        connect(mesh_sel,SIG("mesh_valided"),group_sel.notify)
+        model_sel.add_related_component(group_sel)
+
+        group_sel.place(vlayout)
+        
+        vspacer = qt.QSpacerItem(20, 10, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
+        vlayout.addItem(vspacer)
+
+        grid = qt.QGridLayout()
+        young = WC.YoungModulus()
+        young.add_to(qt.QWidget(), grid, 0)
+        poisson = WC.PoissonRatio()
+        poisson.add_to(qt.QWidget(), grid, 1)
+        vlayout.addLayout(grid)
+         
+        vspacer = qt.QSpacerItem(20, 10, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
+        vlayout.addItem(vspacer)
+
+        label_for_model = qt.QLabel(u"Adding imposed degrees of freedom on groups",self)
+        vlayout.addWidget(label_for_model)
+        
+        degrees_sel = AstLSConditionsSelector(self.data,0,self)
+        connect(group_sel,SIG("group_valided"),degrees_sel.valid_by_group)
+        degrees_sel.add_to(vlayout)
+        
+        vspacer = qt.QSpacerItem(20, 10, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
+        vlayout.addItem(vspacer)
+        
+        label_for_model = qt.QLabel(u"Adding pressure on meshes groups",self)
+        vlayout.addWidget(label_for_model)
+        
+        pressure_sel = AstLSConditionsSelector(self.data,1,self)
+        connect(group_sel,SIG("group_valided"),pressure_sel.valid_by_group)
+        pressure_sel.add_to(vlayout)
+        
+        group_sel.add_related_component(degrees_sel)
+        group_sel.add_related_component(pressure_sel)
+        
+        hlayout = qt.QHBoxLayout()
+        hspacer = qt.QSpacerItem(27, 20, qt.QSizePolicy.Expanding, qt.QSizePolicy.Minimum)
+        hlayout.addItem(hspacer)
+        btnok = qt.QPushButton("OK",centralWidget)
+        btncancel = qt.QPushButton("Cancel",centralWidget)
+        hlayout.addWidget(btnok)
+        hlayout.addWidget(btncancel)
+        vlayout.addLayout(hlayout)
+        self.setWidget(centralWidget)
+       
+        
+def create_wizard(mod):
+    """Create the linear static wizard"""
+    wiz = WC.Wizard(u"Isotropic linear elastic study", mod)
+    WC.add_model_page(wiz, [
+        WC.Mode3D,
+        WC.PlaneStress,
+        WC.PlaneStrain,
+        WC.AxisSymmetric,
+        ])
+
+    exp_store = WC.ExpStore()
+    exp_store.register(WC.ExpStore.smesh, SMeshExp())
+    exp_store.register(WC.ExpStore.geom, GeomExp())
+    WC.add_mesh_page(wiz, mod, exp_store)
+    title = u"Young's modulus and Poisson ratio definitions"
+    WC.add_material_page(wiz, title, [
+        WC.YoungModulus(),
+        WC.PoissonRatio(),
+    ])
+    WC.add_boundaries_page(wiz)
+    add_pressure_page(wiz)
+    WC.add_command_file_page(wiz, FinalPage(mod))
+    return wiz
+
+

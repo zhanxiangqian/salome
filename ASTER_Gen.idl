@@ -1,0 +1,182 @@
+
+#ifndef __ASTER_GEN__
+#define __ASTER_GEN__
+
+#include "SALOME_Component.idl"
+#include "SALOMEDS.idl"
+#include "SALOME_Exception.idl"
+
+#ifdef _WITH_OPENTURNS
+#include "SALOME_Parametric.idl"
+#endif
+
+
+module ASTER_ORB
+{
+    interface Elt {
+
+        /*! Return the %SALOME node entry
+         */
+        string GetEntry();
+    };
+
+    enum EltType {
+        WorkingDir,
+        CommFile,
+        MedFile,
+        SMeshEntry,
+        RemoveRmed,
+        ExportFile,
+        MessFile,
+        ResuFile,
+        RMedFile
+    };
+
+    enum JobStatus {
+        Running,
+        Ended,
+        Success,
+        Alarm,
+        Failure,
+        Unknown
+    };
+
+    interface Job {
+        /*! Return the current status of the job
+         */
+        JobStatus Status();
+
+        /*! Return the result status
+         */
+        JobStatus ResStatus();
+
+        /*! Wait until the job is finished and return its final status
+         */
+        JobStatus WaitResult();
+
+        /*! Kill the running case
+         */
+        void Kill();
+    };
+
+    interface StudyCase : Elt {
+        /*! Read the case name stored on the %SALOME study and return it
+         */
+        string ReadName();
+
+        /*! Use the given element type
+         */
+        void Use(in EltType aEltType);
+
+        /*! Use the given element type with its string value
+         */
+        void UseStr(in EltType aEltType, in string value);
+
+        /*! Run the Aster solver on the study case
+          */
+        Job Run();
+
+        /*! Return the filename of a result
+          */
+        string ResultFileName(in EltType aEltType);
+    };
+
+    enum CaseType {
+        FromComm,
+        FromExport
+    };
+
+    typedef sequence<StudyCase> StudyCases;
+
+    interface Study : Elt {
+        /*! Add an Aster study case
+         */
+        StudyCase AddCase(in string name, in CaseType type);
+
+        /*! Find and return the Aster study cases stored in the %SALOME study
+         */
+        StudyCases GiveCases();
+    };
+
+    interface ASTER_Gen: Engines::EngineComponent, SALOMEDS::Driver
+    {
+        /*! Attach the Aster study to the given %SALOME study
+         */
+        Study AttachTo(in SALOMEDS::Study theStudy);
+
+        /*! Return the Aster version used by default
+         */
+        string GiveAsterVersion();
+
+#ifdef _WITH_OPENTURNS
+        /**
+         * @brief Initialize the component with the deterministic variables and the lists of
+         *        probabilistic variables.
+         *
+         * The Init method prepares the component for a series of computation with
+         * the method Exec. It extracts the deterministic data from Salome study and
+         * stores this data along with the lists of input and output variables to
+         * identify them in future calls to Exec.
+         *
+         * @param studyID        the identifier of the study containing the deterministic data
+         * @param detCaseEntry   the identifier of the deterministic case within the study
+         */
+        void Init(in long studyID, in SALOMEDS::ID detCaseEntry)
+            raises (SALOME::SALOME_Exception);
+
+        /**
+         * @brief Execute a computation with a given sample of variables.
+         *
+         * The Exec method realizes the computation with the probabilistic variables
+         * described in paramInput and the deterministic variables set previously with
+         * the Init method. The result is put in paramOutput in the order specified by
+         * paramInput.outputVarList.
+         *
+         * @param paramInput   a structure describing the probabilistic variables and the order
+         *                     of the output variables.
+         * @param paramOutput  a structure containing the result of the computation
+         */
+        void Exec(in SALOME_TYPES::ParametricInput paramInput,
+                  out SALOME_TYPES::ParametricOutput paramOutput)
+            raises (SALOME::SALOME_Exception);
+
+        /**
+         * @brief Cleanup everything that was previously set
+         *
+         * The Finalize method is in charge of cleaning everything that what set hitherto.
+         * It may be empty.
+         */
+        void Finalize()
+            raises (SALOME::SALOME_Exception);
+
+        /**
+         * @brief Return the files and directories that must be transferred
+         *        from / to the computation resource
+         *
+         * This method is used to specify which files and directories must be
+         * transferred to the computation resource for the calculation code, and
+         * which resulting files and directories must be transferred from the
+         * computation resource to the local computer.
+         *
+         * @param studyID      the identifier of the study containing the
+         *                     deterministic data
+         * @param detCaseEntry the identifier of the deterministic case within the
+         *                     study
+         * @param inputFiles   the list of input files and directories to transfer
+         *                     from the local computer to the computation resource
+         *                     (absolute paths on the local computer)
+         * @param outputFiles  the list of output files and directories that must
+         *                     be transferred from the computation resource to the
+         *                     local computer after the computation (paths
+         *                     relative to the working directory on the
+         *                     computation resource)
+         */
+        void GetFilesToTransfer(in long studyID, in SALOMEDS::ID detCaseEntry,
+                                out SALOMEDS::ListOfStrings inputFiles,
+                                out SALOMEDS::ListOfStrings outputFiles)
+            raises (SALOME::SALOME_Exception);
+#endif
+    };
+};
+
+#endif

@@ -1,0 +1,16 @@
+<document>
+  <section name="ASTER">
+    <!-- Major module parameters -->
+    <parameter name="name"    value="Aster"/>
+    <parameter name="icon"    value="Code_Aster.png"/>
+    <parameter name="library" value="SalomePyQtGUI"/>
+    <parameter name="save-base-result"  value="true" />
+    <parameter name="interactive-follow-up" value="true" />
+    <parameter name="text_editor" value="/usr/bin/gedit"/>
+    <parameter name="version" value="7.8.0"/>
+  </section>
+  <section name="resources">
+    <!-- Module resources -->
+    <parameter name="ASTER" value="${ASTER_ROOT_DIR}/share/salome/resources/aster"/>
+  </section>
+</document>

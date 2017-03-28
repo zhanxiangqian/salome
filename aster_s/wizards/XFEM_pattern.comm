@@ -1,0 +1,172 @@
+DEBUT(PAR_LOT='NON',IGNORE_ALARM = ('SUPERVIS_1','CALCULEL2_63 '))
+
+#---------------------------------------------------------------------------
+# parameters from the Wizard 
+#------------------------------
+
+isRaff = %(refinement_key)s
+
+h0IsCalculed = %(h0_calculed_key)s
+
+if not h0IsCalculed :
+    # h0 : initial elements size 
+    h0 = %(initial_size_key)s
+else :
+    MAILLAGE=LIRE_MAILLAGE(FORMAT='MED',);
+
+    MODEL=AFFE_MODELE(MAILLAGE=MAILLAGE,
+                       AFFE=_F(TOUT='OUI',
+                               PHENOMENE='MECANIQUE',
+                               MODELISATION='%(modelisation_key)s'))
+
+%(fissureXFEM_definition_key_in)s
+
+    l_fiss = %(ListFissName_key)s
+
+    h0=0.
+
+    for ifiss in l_fiss:
+        list_tail = ifiss.sdj.FOND_TAILLE_R.get()
+        h0=max(max(list_tail),h0)
+        DETRUIRE(CONCEPT=_F(NOM=ifiss),INFO=1)
+
+    TABLE_H0=CREA_TABLE(LISTE=(_F(PARA='H0',LISTE_R=h0)))
+    IMPR_TABLE(TABLE=TABLE_H0)
+
+
+# hc : target elements size (taille cible)
+hc = %(coefhc_key)s
+
+#---------------------------------------------------------------------------
+
+if isRaff and h0>hc:
+
+
+    # useful parameters
+    #------------------
+
+    # number of mesh refinements
+    n = (log(h0)-log(hc))/log(2)
+    nb_raff = int(n)+1
+    nb_iter = nb_raff+1
+
+
+    # initialization
+    MA    = [None]*(nb_iter+1)
+
+    i_raff=0   
+    MA[i_raff]=LIRE_MAILLAGE(FORMAT='MED',);
+
+    # h : final elements size 
+    h = h0/(2.**nb_raff)
+
+    # radius of refinements disc
+    r_raff = 6*h
+
+    # initialization
+    MO    = [None]*nb_iter
+    CHERR = [None]*nb_iter
+    DIAM  = [None]*(nb_iter+1)
+
+    # refinements loop
+    #------------------
+    for i_raff in range(nb_iter) :
+
+        MO[i_raff]=AFFE_MODELE(MAILLAGE=MA[i_raff],
+                          AFFE=_F(TOUT='OUI',
+                                  PHENOMENE='MECANIQUE',
+                                  MODELISATION='%(modelisation_key)s'))
+                                  
+%(fissureXFEM_definition_key_in2)s
+
+
+        l_fiss = %(ListFissName_key)s
+   
+        # errors evaluation      
+        CHERR[i_raff]=RAFF_XFEM(FISSURE=l_fiss,TYPE='ZONE',RAYON=r_raff)
+   
+        # mesh concept n+1
+        MA[i_raff+1]=CO(%(concept_key)s)
+
+        DIAM[i_raff+1]=CO(%(diam_key)s)   
+
+        MACR_ADAP_MAIL(ADAPTATION         = 'RAFFINEMENT',
+                  CHAM_GD            = CHERR[i_raff],
+                  CRIT_RAFF_ABS      = 0.5,
+                  DIAM_MIN           = hc,
+                  USAGE_CMP          = 'RELATIF', 
+                  MAILLAGE_N         = MA[i_raff],
+                  MAILLAGE_NP1       = MA[i_raff+1],
+                  ADD_CHAM = _F(CHAM_GD = DIAM[i_raff+1],
+                                CHAM_CAT='DIAMETRE'),
+                  ELEMENTS_ACCEPTES= 'IGNORE_PYRA')
+                  
+        DETRUIRE(CONCEPT=_F(NOM=l_fiss),INFO=1)
+   
+    assert(nb_iter == i_raff+1)
+
+    ind_mail = nb_iter
+    %(mesh_change_key)s
+
+    IMPR_RESU(FORMAT='MED',UNITE=80,RESU=_F(MAILLAGE=MA[nb_iter]))
+
+
+else:
+    ind_mail = 0
+    # initialization
+    MA = [None]
+    MA[ind_mail]=LIRE_MAILLAGE(FORMAT='MED',);
+
+    %(mesh_change_key)s
+
+    h=h0
+
+MOD=AFFE_MODELE(MAILLAGE=MA[ind_mail],
+                AFFE=_F(TOUT='OUI',
+                        PHENOMENE='MECANIQUE',
+                        MODELISATION='%(modelisation_key)s',),)
+
+
+%(fissureXFEM_definition_key)s
+
+
+l_fiss = %(ListFissName_key)s
+
+MODX=MODI_MODELE_XFEM(MODELE_IN=MOD,
+                      FISSURE=l_fiss)
+
+ACIER=DEFI_MATERIAU(ELAS=_F(E=%(young_key)s,
+                         NU=%(poisson_key)s,),)
+
+MATE=AFFE_MATERIAU(MAILLAGE=MA[ind_mail],
+                   AFFE=_F(TOUT='OUI',
+                           MATER=ACIER))
+
+
+%(mechanical_constraints_key)s
+
+RESU=MECA_STATIQUE(MODELE=MODX,
+                   CHAM_MATER=MATE,
+                   EXCIT=_F(CHARGE=CHAR))
+
+# visualization
+MA_VISU=POST_MAIL_XFEM(MODELE=MODX)
+
+MO_VISU=AFFE_MODELE(MAILLAGE=MA_VISU,
+                    AFFE=_F(TOUT='OUI',
+                            PHENOMENE='MECANIQUE',
+                            MODELISATION='%(modelisation_key)s'))
+
+RE_VISU=POST_CHAM_XFEM(MODELE_VISU=MO_VISU,
+                       RESULTAT=RESU)
+
+RE_VISU=CALC_CHAMP(RESULTAT=RE_VISU,reuse=RE_VISU,
+                  CRITERES=('SIEQ_ELGA','SIEQ_ELNO'))
+
+IMPR_RESU(FORMAT='MED',UNITE=80,RESU=_F(RESULTAT=RE_VISU))
+
+# postprocessing in cracks analysis
+
+%(fissureXFEM_POST_key)s
+
+FIN()

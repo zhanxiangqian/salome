@@ -1,0 +1,100 @@
+# -*- coding: utf-8 -*-
+"""Supervise the Aster jobs from the Salomé GUI
+"""
+
+from PyQt4 import QtCore as qtc
+connect = qtc.QObject.connect
+SIG = qtc.SIGNAL
+
+import aster_s
+
+from aster_s_gui.common import INFO
+from aster_s.utils import log_gui
+
+class RunningJob(object):
+    """Follow a running Job (aster_s.study.Job)
+    """
+
+    def __init__(self, rjobs, mod, name, job):
+        self._rjobs = rjobs
+        self._mod = mod
+        self._name = name
+        self._job = job
+        # It is not possible to delele a QObject during its event handler
+        # so the QTimer needs be a child of a QWidget
+        timer = qtc.QTimer(mod.give_qtwid())
+        connect(timer, SIG("timeout()"), self.update)
+        self._timer = timer
+
+    def start(self, refresh_time=500):
+        """Start to follow the running job"""
+        self._timer.start(refresh_time)
+
+    def update(self):
+        if self._job.status() is aster_s.ENDED:
+            log_gui.debug("[DEBUG] RunningJob.update call job.get_diag")
+            res, has_results = self._job.get_diag()
+            log_gui.debug("[DEBUG] RunningJob.update res: %s, bool:%s", res, has_results)
+            #self._mod.notify_job_ended(self._name, res, has_results)
+            self._job.terminate()
+            self._mod.update()
+            self._timer.stop()
+            self._timer.deleteLater()
+            self._rjobs.remove(self._name)
+
+    def stop(self):
+        """Stop the running job"""
+        self._job.kill()
+        
+
+class RunningJobs(object):
+    """Keep track of the running jobs
+    """
+    _is_busy_mess = "The job '%s' is currently running, " \
+                    "this action is not available."
+    _is_free_mess = "The job '%s' is currently inactive, " \
+                    "this action is not available."
+
+    def __init__(self, mod):
+        self._mod =  mod
+        self._rjobs = {}
+
+    def add(self, name, job, refresh_time=500):
+        """Add a running job, the name must be unique"""
+        assert (name not in self._rjobs)
+        rjob = RunningJob(self, self._mod, name, job)
+        rjob.start(refresh_time)
+        self._rjobs[name] = rjob
+
+    def has(self, name):
+        """Tell if the given job is running"""
+        return bool(self._rjobs.get(name))
+
+    def is_busy(self, name):
+        """Launch an information dialog if the given job is running.
+        Does nothing and return False otherwise"""
+        is_busy = False
+        if self.has(name):
+            is_busy = True
+            self._mod.launch(INFO, self._is_busy_mess % name)
+        return is_busy
+
+    def is_free(self, name):
+        """Launch an information dialog if the given job is not running.
+        Does nothing and return False otherwise"""
+        is_free = False
+        if not self.has(name):
+            is_free = True
+            self._mod.launch(INFO, self._is_free_mess % name)
+        return is_free
+
+    def stop(self, name):
+        """Stop the running job from its name"""
+        rjob = self._rjobs[name]
+        rjob.stop()
+
+    def remove(self, name):
+        """Remove the given job from its name"""
+        del self._rjobs[name]
+
+

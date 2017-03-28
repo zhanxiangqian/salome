@@ -1,0 +1,80 @@
+DEBUT(IGNORE_ALARM='UTILITAI4_2');
+# ignore this alarm when computing modal stresses, because :
+# - for modal analysis, there is no external force
+# - boundary conditions are already embedded in the data structure
+#       produced by CALC_MODES
+ 
+##########################################
+# MESH AND MODEL
+##########################################
+MAIL=LIRE_MAILLAGE(UNITE=20,
+                   FORMAT='MED',);
+
+MODELE=AFFE_MODELE(MAILLAGE=MAIL,
+                   AFFE=_F(TOUT='OUI',
+                           PHENOMENE='MECANIQUE',
+                           MODELISATION='%(modelisation_key)s',),);
+#########################################
+# ELEMENTS' CHARACTERISTICS
+#########################################
+
+%(Cara_Elem)s
+
+#########################################
+# MATERIAL
+#########################################
+
+MAT=DEFI_MATERIAU(ELAS=_F(E=%(young_key)s,
+                          NU=%(poisson_key)s,
+                          RHO=%(density_key)s,),);
+
+CHMAT=AFFE_MATERIAU(MAILLAGE=MAIL,
+                    AFFE=_F(TOUT='OUI',
+                            MATER=MAT,),);
+
+##########################################
+# BOUNDARY CONDITIONS
+##########################################
+%(bound_constraints_key)s
+
+###############################################
+# COMPUTATION OF MASS AND STIFFNESS MATRICES
+###############################################
+
+ASSEMBLAGE(MODELE=MODELE,
+           CHAM_MATER=CHMAT,
+           %(loading_key)s
+           %(Cara_Key)s
+           NUME_DDL=CO('NUMEDDL'),
+           MATR_ASSE=(_F(MATRICE=CO('RIGIDITE'),
+                         OPTION='RIGI_MECA',),
+                      _F(MATRICE=CO('MASSE'),
+                         OPTION='MASS_MECA',),
+                     ),
+          );
+
+
+######################################
+# MODAL ANALYSIS
+######################################
+
+%(calc_modes)s
+
+
+######################################
+# MODAL STRESSES
+######################################
+
+MODES=CALC_CHAMP(reuse=MODES,
+                 RESULTAT=MODES,
+                 CONTRAINTE=('SIEF_ELGA'),);
+
+######################################
+# PRINT THE RESULTS
+######################################
+
+IMPR_RESU(FORMAT='MED',
+          RESU=_F(RESULTAT=MODES,),);
+
+
+FIN();

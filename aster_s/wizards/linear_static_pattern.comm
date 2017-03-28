@@ -1,0 +1,35 @@
+DEBUT();
+
+MA=DEFI_MATERIAU(ELAS=_F(E=%(young_key)s,
+                         NU=%(poisson_key)s,),);
+
+MAIL=LIRE_MAILLAGE(FORMAT='MED',);
+
+%(mesh_change_key)s
+
+MODE=AFFE_MODELE(MAILLAGE=MAIL,
+                 AFFE=_F(TOUT='OUI',
+                         PHENOMENE='MECANIQUE',
+                         MODELISATION='%(modelisation_key)s',),);
+
+MATE=AFFE_MATERIAU(MAILLAGE=MAIL,
+                   AFFE=_F(TOUT='OUI',
+                           MATER=MA,),);
+
+%(mechanical_constraints_key)s
+
+RESU=MECA_STATIQUE(MODELE=MODE,
+                   CHAM_MATER=MATE,
+                   EXCIT=_F(CHARGE=CHAR,),);
+
+RESU=CALC_CHAMP(reuse=RESU,
+               RESULTAT=RESU,
+               CONTRAINTE=('SIGM_ELNO','SIGM_NOEU'),
+               CRITERES=('SIEQ_ELNO','SIEQ_NOEU',),);
+
+IMPR_RESU(FORMAT='MED',
+          UNITE=80,
+          RESU=_F(RESULTAT=RESU,
+                  NOM_CHAM=('SIGM_NOEU','SIEQ_NOEU','DEPL',),),);
+
+FIN();

@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='us-ascii' ?>
+
+<begin-catalog>
+    <path-prefix-list></path-prefix-list>
+    <component-list>
+        <component>
+            <component-name>ASTER</component-name>
+        </component>
+    </component-list>
+</begin-catalog>
+

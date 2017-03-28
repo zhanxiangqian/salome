@@ -1,0 +1,35 @@
+# -*- coding: utf-8 -*-
+"""Entry point for the graphical side
+"""
+import os 
+import aster_s_gui as AG
+Bld = AG.GuiBuilder
+
+
+def activate():
+    """Automatically called for activating the Aster module"""
+    # Create an AsterModule instance for each Salomé study.
+    print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    os.system("pause") 
+    return Bld().activate()
+
+def OnGUIEvent(action_idx):
+    """Automatically called when a registered action is activated"""
+    Bld().run_action_from(action_idx)
+
+def createPopupMenu(popup, context):
+    """Automatically called when a right click is done on an object 
+    browser line."""
+    Bld().fill_popup_menu(popup)
+
+def createPreferences():
+    """Automatically called for building preferences"""
+    prefs = AG.AsterPreferences()
+    root = prefs.build_root(u"Code Aster default settings")
+    frame = root.add_frame("Solver settings")
+    frame.add(AG.SaveBaseResult)
+    frame.add(AG.InteractiveFollowUp)
+    frame = root.add_frame("Tools")
+    frame.add(AG.EditorCommand)
+
+

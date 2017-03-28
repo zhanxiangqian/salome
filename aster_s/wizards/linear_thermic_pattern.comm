@@ -1,0 +1,26 @@
+DEBUT();
+
+MESH=LIRE_MAILLAGE(UNITE=20,
+                   FORMAT='MED',);
+
+MATER=DEFI_MATERIAU(THER=_F(LAMBDA=%(lambda_key)s,),);
+
+MODEL=AFFE_MODELE(MAILLAGE=MESH,
+                  AFFE=_F(TOUT='OUI',
+                          PHENOMENE='THERMIQUE',
+                          MODELISATION='%(modelisation_key)s',),);
+
+MATFIELD=AFFE_MATERIAU(MAILLAGE=MESH,
+                       AFFE=_F(TOUT='OUI',
+                               MATER=MATER,),);
+
+%(thermal_constraints_key)s
+
+TEMP=THER_LINEAIRE(MODELE=MODEL,
+                   CHAM_MATER=MATFIELD,
+                   EXCIT=_F(CHARGE=LOADING,),);
+
+IMPR_RESU(FORMAT='MED',
+          RESU=_F(RESULTAT=TEMP,),);
+
+FIN();
