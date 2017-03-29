@@ -1,7 +1,7 @@
 ﻿#coding: utf-8 -*-
 """Qt wizard on linear static study case
 """
-
+from aster_s.utils import log_gui
 from PyQt4 import QtGui as qt
 from PyQt4 import QtCore as qtc
 import aster_s.salome_tree as ST
@@ -10,7 +10,8 @@ import aster_s.wizards.common as WCD
 import aster_s_gui
 import aster_s_gui.wizards.common as WC
 from aster_s.utils import log_gui
-
+QNULL = WC.QNULL
+ROOT_MIDX = WC.ROOT_MIDX
 
 def is_valid_mesh(cexp, mesh, mod):
     """A valid mesh needs to have groups for pressure"""
@@ -233,13 +234,6 @@ def Creat_Boundary_Pressure_Conditions_DockWdg(mod):
 SIG = qtc.SIGNAL
 connect = qtc.QObject.connect
 
-class AstLSConditionsSelector(WC.AstConditionsSelector):
-    """Allow to set conditions on proposed groups.
-    The conditions are built in a list of lists given to the WizardField.
-    """
-    def __init__(self, data, condition_type, parent):#condition_type 0 表示用于自由度， 1 表示用于压力zxq 2017/2/9
-        WC.AstConditionsSelector.__init__(self, data, condition_type, parent)
-
 class LSData():
     def __init__(self,mod):
         self.modellist = WCD.Model_Type_List(WCD.Analysis_Type.Linear_Elatic)
@@ -251,7 +245,10 @@ class LSData():
         exp_store.register(WC.ExpStore.smesh, SMeshExp())
         exp_store.register(WC.ExpStore.geom, GeomExp())
         self.exp_store = exp_store
-        self.grouptypesel = 0
+        self.grouptypesel = 0 #0表示不可用，1使用几何，2使用网格
+        self.material_names = ["defult"]
+        self.checklists = [] #作为二维数组使用 每行的第一个数据仅站位使用，无实际意义 任何时候都不应该使用self.checklists[i][0]的数据，目的是为了与conds数据对齐，使用方便
+        self.conds = []
         
     def get_dim(self):
         return self.get_sel_itm().dim
@@ -259,7 +256,129 @@ class LSData():
     def get_sel_itm(self):
         return (self.modellist.get_item(self.itemindex))
         
+class Ast_D_of_F_Model(WC.AstConditionsModel):
+    def __init__(self, sel, header_names):
+        WC.AstConditionsModel.__init__(self,sel,header_names)
+        
+    def flags(self, midx):
+        """Tell to Qt mechanism that each cell is enabled and editable"""
+        flags = qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled
+        if (midx.row() + 1 == self.rowCount(ROOT_MIDX)):
+            flags = qtc.Qt.ItemIsSelectable
+        elif(midx.column() == 0 and midx.row() + 1 <  self.rowCount(ROOT_MIDX)): #若不是第一列则ischeckabled
+            flags = qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled
+        elif(midx.column() > 0 and midx.row() + 1 <  self.rowCount(ROOT_MIDX)):
+            flags = qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled | qtc.Qt.ItemIsUserCheckable
+        return flags
+        
+    def setData(self, midx, value,  role = qtc.Qt.EditRole):
+        if(role == qtc.Qt.CheckStateRole):
+           self._sel._checklists[midx.row()][midx.column()],_ = value.toInt()
+           return True
+           
+        else:
+           return WC.AstConditionsModel.setData(self,value,role)
+        
+    def data(self, midx, role):
+        """Provide data for each cell in the display role"""
+        res = QNULL
+        if (midx.row() + 1 == self.rowCount(ROOT_MIDX) ):
+           if (role  == qtc.Qt.DisplayRole):
+              vallist = self._sel.give_default_val()
+              res = qtc.QVariant("----")
+           elif(role == qtc.Qt.TextAlignmentRole):
+              res = qtc.QVariant(qtc.Qt.AlignHCenter | qtc.Qt.AlignVCenter)
+           else:
+              res = QNULL
+              #log_gui.debug("use ForegroundRole role %s and res.type %s", role, type(res))
+           #elif role == qtc.Qt.ForegroundRole:
+              #qcolor = qt.QColor(0,240,240)
+              #res = qt.QBrush(0,240,240)
+              #log_gui.debug("use ForegroundRole role %s and res.type %s", role, type(res))
+        else:
+           if role in (qtc.Qt.DisplayRole, qtc.Qt.EditRole):
+              cond = self._sel.give_cond(midx.row())
+              res = qtc.QVariant(cond[midx.column()])
+           elif role == qtc.Qt.TextAlignmentRole:
+              res = qtc.QVariant(qtc.Qt.AlignHCenter | qtc.Qt.AlignVCenter)
+           elif role == qtc.Qt.CheckStateRole:
+              if (midx.column() == 0):
+                 res = QNULL
+              else: 
+                 res = qtc.QVariant(self._sel._checklists[midx.row()][midx.column()])
+           else:
+              res = QNULL
+        return res
+        
+class Ast_D_of_F_Selector(WC.AstConditionsSelector):#用于设置degrees of freedom
+    """Allow to set Material on proposed groups.
+    """
+    def __init__(self, data, parent):#condition_type 0 用于degree 2017/2/9
+        WC.AstConditionsSelector.__init__(self, data, 0, parent,False)
+        self._material_names = data.material_names
+        self._checklists = data.checklists #二维数组
+        
+    def valid_by_group(self):
+        if(self._data.grouptypesel != 0):
+            cexp = self._data.exp_store
+            exp = cexp.give_exp("pressure")
+            mesh = self._data.mesh
+            log_gui.debug("valid_by_group by group type %s, mesh %s", self._data.grouptypesel,mesh)
+            grp_names = exp.find_groups(mesh)
+            self._grp_names = grp_names
+            self._valided = True
+            
+            dim = self._data.get_dim()
+            if (len(grp_names)>0):
+               if self._condition_type==0:
+                  head_names =[u"Group", u"DX", u"DY"]
+                  self._default_cond = [grp_names[0]] + [0.0, 0.0]
+                  if (dim == WCD.Dim_Type.Three_Dim):
+                     head_names.append(u"DZ")
+                     self._default_cond.append(0.0)
 
+            checklist = [qtc.Qt.Unchecked]*len(head_names)
+            val_list = [.0]*len(head_names)
+            self._default_cond = [grp_names[0]] + val_list
+            self._default_check = checklist
+               
+            model = Ast_D_of_F_Model(self, head_names)
+            self._tab.setModel(model)
+            self._tab.setEnabled(True)
+            self._tab.horizontalHeader().setClickable(True)
+            self._tab.setItemDelegate(WC.ValueDelegate(self))
+            self.add_cond()
+            
+            icolumn = 0
+            for iname in head_names:
+                width = 80
+                if icolumn > 0:
+                   width = 60
+                self._tab.setColumnWidth(icolumn,width) 
+                icolumn += 1
+            self.is_reseted = False
+        else:
+            self._build()
+            
+    def add_cond(self):
+        """Add a condition to the table"""
+        if not self._default_cond or not self._default_check:
+            return
+        model = self._tab.model()
+        conds = self._conds
+        end_idx = len(conds)
+        model.beginInsertRows(qtc.QModelIndex(), end_idx, end_idx)
+        conds.append(list(self._default_cond))
+        self._checklists.append(list(self._default_check))
+        comb = qt.QComboBox(self._tab)
+        comb.addItems(self._grp_names)
+        connect(comb, SIG("currentIndexChanged (const QString&)"),model.setgroup)
+        self._combos.append(comb)
+        model.endInsertRows()
+        idx = model.index(end_idx, self._groupcolumn, ROOT_MIDX)
+        self._tab.setIndexWidget(idx, comb)
+        self.notify_wizard()
+        
 class Create_Dock(qt.QDockWidget):
     def __init__(self, mod):
         desktop = mod.give_qtwid()
@@ -290,20 +409,22 @@ class Create_Dock(qt.QDockWidget):
         vspacer = qt.QSpacerItem(20, 10, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
         vlayout.addItem(vspacer)
 
-        grid = qt.QGridLayout()
-        young = WC.YoungModulus()
-        young.add_to(qt.QWidget(), grid, 0)
-        poisson = WC.PoissonRatio()
-        poisson.add_to(qt.QWidget(), grid, 1)
-        vlayout.addLayout(grid)
-         
+        #grid = qt.QGridLayout()
+        #young = WC.YoungModulus()
+        #young.add_to(qt.QWidget(), grid, 0)
+        #poisson = WC.PoissonRatio()
+        #poisson.add_to(qt.QWidget(), grid, 1)
+        #vlayout.addLayout(grid)
+        material_sel = WC.AstMaterialSelector(self.data,self)
+        material_sel.add_to(vlayout)
+        
         vspacer = qt.QSpacerItem(20, 10, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
         vlayout.addItem(vspacer)
 
         label_for_model = qt.QLabel(u"Adding imposed degrees of freedom on groups",self)
         vlayout.addWidget(label_for_model)
-        
-        degrees_sel = AstLSConditionsSelector(self.data,0,self)
+                
+        degrees_sel = Ast_D_of_F_Selector(self.data,self)
         connect(group_sel,SIG("group_valided"),degrees_sel.valid_by_group)
         degrees_sel.add_to(vlayout)
         
@@ -313,12 +434,13 @@ class Create_Dock(qt.QDockWidget):
         label_for_model = qt.QLabel(u"Adding pressure on meshes groups",self)
         vlayout.addWidget(label_for_model)
         
-        pressure_sel = AstLSConditionsSelector(self.data,1,self)
+        pressure_sel = WC.AstConditionsSelector(self.data,1,self)
         connect(group_sel,SIG("group_valided"),pressure_sel.valid_by_group)
         pressure_sel.add_to(vlayout)
         
         group_sel.add_related_component(degrees_sel)
         group_sel.add_related_component(pressure_sel)
+        group_sel.add_related_component(material_sel)
         
         hlayout = qt.QHBoxLayout()
         hspacer = qt.QSpacerItem(27, 20, qt.QSizePolicy.Expanding, qt.QSizePolicy.Minimum)

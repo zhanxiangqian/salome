@@ -1247,13 +1247,13 @@ class Create_XFEMDock(qt.QDockWidget):
         ref_sel.place(vlayout)
         preview_sel.add_related_component(ref_sel)
 
-        grid = qt.QGridLayout()
-        young = WC.YoungModulus()
-        young.add_to(qt.QWidget(), grid, 0)
+        #grid = qt.QGridLayout()
+        #young = WC.YoungModulus()
+        #young.add_to(qt.QWidget(), grid, 0)
         
-        poisson = WC.PoissonRatio()
-        poisson.add_to(qt.QWidget(), grid, 1)
-        vlayout.addLayout(grid)
+        #poisson = WC.PoissonRatio()
+        #poisson.add_to(qt.QWidget(), grid, 1)
+        #vlayout.addLayout(grid)
 
         label_for_model = qt.QLabel(u"Adding imposed degrees of freedom on groups",centralWidget)
         vlayout.addWidget(label_for_model)

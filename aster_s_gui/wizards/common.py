@@ -905,6 +905,7 @@ class ShearModulus(Param):
         grid.addWidget(entry, ridx, 1)
         grid.addWidget(qt.QLabel(self.suffix), ridx, 2)
 
+
 class PoissonRatio(Param):
     """Poisson's ratio parameter
     """
@@ -1359,7 +1360,22 @@ class AstConditionsModel(AbsTableModel):
             res = AbsTableModel.headerData(self, sidx, orientation, role)
         return res
         
+class AstMaterialModel(AstConditionsModel):
+    def __init__(self, sel, header_names):
+        AstConditionsModel.__init__(self,sel, header_names)
         
+    def setmaterial(self,text):
+        midx = self._sel.get_view().currentIndex()
+        comb = self.sender()
+        if (midx.row() + 1 == self.rowCount(ROOT_MIDX) or midx.column() + 1 == self.columnCount(ROOT_MIDX)):
+           return
+        else:
+           cond = self._sel.give_cond(midx.row())
+           cond[midx.column()] = text
+           log_gui.debug("setgroup with want data %s cond_data %s", text, cond)
+           self._sel.notify_wizard()
+        log_gui.debug("setmaterial with want data %s comb %s", text, comb)
+
 class AstConditionsSelector(WC.AstObject):
     """Allow to set conditions on proposed groups.
     The conditions are built in a list of lists given to the WizardField.
@@ -1372,7 +1388,7 @@ class AstConditionsSelector(WC.AstObject):
         self._tab = qt.QTableView(parent)
         self._grp_names =[]
         self._connect = False
-        self._conds = []
+        self._conds = data.conds
         self._default_model = AstConditionsModel(self, ["----","----"])
         self._build()
         self._default_cond = ["----", "----"]
@@ -1519,3 +1535,73 @@ class AstConditionsSelector(WC.AstObject):
            self.is_reseted = True
         self.valid_by_group()
 
+class AstMaterialSelector(AstConditionsSelector):#用于设置group 的材料（每个材料的名字是唯一的）
+    """Allow to set Material on proposed groups.
+    """
+    def __init__(self, data, parent):#condition_type 0  2017/2/9
+        AstConditionsSelector.__init__(self, data, 1, parent, False)
+        self._material_names = data.material_names
+        
+    def valid_by_group(self):
+        if(self._data.grouptypesel != 0):
+            cexp = self._data.exp_store
+            exp = cexp.give_exp("pressure")
+            mesh = self._data.mesh
+            log_gui.debug("valid_by_group by group type %s, mesh %s", self._data.grouptypesel,mesh)
+            grp_names = exp.find_groups(mesh)
+            dim = self._data.get_dim()
+            if (len(grp_names)>0):
+               if self._condition_type==0:
+                  head_names =[u"Group", u"DX", u"DY"]
+                  self._default_cond = [grp_names[0]] + [0.0, 0.0]
+                  if (dim == WC.Dim_Type.Three_Dim):
+                     head_names.append(u"DZ")
+                     self._default_cond.append(0.0)
+               else:
+                     head_names = [u"Group", u"Material"]
+                     self._default_cond = [grp_names[0]] + ["defult"]
+               self._grp_names = grp_names
+               model = AstMaterialModel(self, head_names)
+               self._tab.setModel(model)
+               self._tab.setEnabled(True)
+               self._tab.horizontalHeader().setClickable(True)
+               self.add_cond()
+               #self._tab.setItemDelegateForColumn(0, GroupDelegate(self, self._grp_names))
+               icolumn = 0
+               for iname in head_names:
+                   width = 80
+                   if icolumn > 0:
+                      width = 60
+                   self._tab.setColumnWidth(icolumn,width) 
+                   icolumn += 1
+               self.is_reseted = False
+            else:
+               return
+        else:
+            self._build()
+            
+    def add_cond(self):
+        """Add a condition to the table"""
+        if not self._default_cond:
+            return
+        model = self._tab.model()
+        conds = self._conds
+        end_idx = len(conds)
+        model.beginInsertRows(qtc.QModelIndex(), end_idx, end_idx)
+        conds.append(list(self._default_cond))
+        
+        comb_grp = qt.QComboBox(self._tab)
+        comb_grp.addItems(self._grp_names)
+        connect(comb_grp, SIG("currentIndexChanged (const QString&)"),model.setgroup)
+        
+        comb_mtl = qt.QComboBox(self._tab)
+        comb_mtl.addItems(self._material_names)
+        connect(comb_grp, SIG("currentIndexChanged (const QString&)"),model.setmaterial)        
+        
+        self._combos.append(comb_mtl)
+        model.endInsertRows()
+        grpidx = model.index(end_idx, 0, ROOT_MIDX)
+        mtlidx = model.index(end_idx, 1, ROOT_MIDX)
+        self._tab.setIndexWidget(grpidx, comb_grp)
+        self._tab.setIndexWidget(mtlidx, comb_mtl)
+        self.notify_wizard()

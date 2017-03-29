@@ -1,0 +1,115 @@
+DEBUT()
+
+MAIL=LIRE_MAILLAGE(FORMAT='MED',);
+
+%(mesh_change_key)s
+      
+MODX=AFFE_MODELE(MAILLAGE=MAIL,
+                AFFE=(_F(GROUP_MA=(%(all_mesh_group)s),
+                        PHENOMENE='MECANIQUE',
+                        MODELISATION='%(modelisation_key)s',),))
+
+nbcalc=%(propagation_step)s
+
+ACIER=DEFI_MATERIAU(ELAS=_F(E=%(young_key)s,
+                         NU=%(poisson_key)s,),)
+
+MATE=AFFE_MATERIAU(MAILLAGE=MAIL,
+                   AFFE=_F(TOUT='OUI',
+                           MATER=ACIER))
+
+Fiss = [None]*nbcalc
+
+%(fissureXFEM_definition_simple_key)s
+
+%(mechanical_constraints_key)s
+
+MOD = [None]*nbcalc
+CHXFEM = [None]*nbcalc
+RESU = [None]*nbcalc
+SIF = [None]*nbcalc
+LSN = [None]*nbcalc
+LST = [None]*nbcalc
+
+L_INS1=DEFI_LIST_REEL(DEBUT=0.0,INTERVALLE=_F(JUSQU_A=1.0,NOMBRE=1,),);
+
+h=%(initial_size_key)s
+
+RI=2*h
+RS=5*h
+
+for i in range(nbcalc) :
+   MOD[i]=MODI_MODELE_XFEM(MODELE_IN=MODX,
+                      FISSURE=Fiss[i],)
+
+   CHXFEM[i]=AFFE_CHAR_MECA(MODELE=MOD[i], LIAISON_XFEM='OUI')
+
+   RESU[i]=STAT_NON_LINE(MODELE=MOD[i],
+                   CHAM_MATER=MATE,
+                   EXCIT=(_F(CHARGE=CHARC),
+                          _F(CHARGE=CHARF),
+                          _F(CHARGE=CHXFEM[i])),
+                   COMP_ELAS=_F(RELATION='ELAS'),
+                   INCREMENT=_F(LIST_INST=L_INS1),
+                   )
+
+   SIF[i]=CALC_G(RESULTAT=RESU[i],
+                 OPTION='CALC_K_G',
+                 THETA=_F( FISSURE= Fiss[i],
+                           R_INF=RI,
+                           R_SUP=RS,),
+                 LISSAGE=_F( DEGRE=0,),);
+
+   IMPR_TABLE(TABLE=SIF[i],);
+
+   if ( i != (nbcalc-1) ) :
+      Fiss[i+1] = CO('FISS_%%d'%%(i+1))
+      PROPA_FISS(MODELE=MOD [i],
+                 FISSURE=_F(FISS_ACTUELLE= Fiss [i],
+                            FISS_PROPAGEE= Fiss [i+1],
+                            TABLE=SIF[i],
+                           ),
+                 METHODE_PROPA='SIMPLEXE',
+                 LOI_PROPA=_F(LOI='PARIS',
+                              C=%(paris_C)s,
+                              M=%(paris_m)s,
+                              N=0.,
+                              MATER=ACIER,),
+                 COMP_LINE=_F(COEF_MULT_MINI=0.,
+                              COEF_MULT_MAXI=1.,),
+                 DA_MAX=RI*1.5,
+                 RAYON=RS,
+#                RAYON_TORE=40,
+                 INFO=1,);
+
+      LSN[i+1]=CREA_CHAMP(TYPE_CHAM='NOEU_NEUT_R',
+                          OPERATION='EXTR',
+                          FISSURE=Fiss[i+1],
+                          NOM_CHAM='LNNO',);
+      LST[i+1]=CREA_CHAMP(TYPE_CHAM='NOEU_NEUT_R',
+                          OPERATION='EXTR',
+                          FISSURE=Fiss[i+1],
+                          NOM_CHAM='LTNO',);
+
+for i in range(nbcalc) :
+   MAXFE = [None]*(nbcalc)
+   MOVIS = [None]*(nbcalc)
+   DEPL = [None]*(nbcalc)
+
+   MAXFE[i]=POST_MAIL_XFEM(MODELE=MOD[i]);
+
+   MOVIS[i]=AFFE_MODELE(MAILLAGE=MAXFE[i],
+                         AFFE=_F(TOUT='OUI',
+                                 PHENOMENE='MECANIQUE',
+                                 MODELISATION='%(modelisation_key)s',),) 
+
+   DEPL[i]=POST_CHAM_XFEM(
+                          MODELE_VISU   = MOVIS[i],
+                          RESULTAT=RESU[i],
+                          );
+
+   IMPR_RESU(   FORMAT='MED',
+             UNITE=80,
+             RESU=_F(RESULTAT=DEPL[i],),);
+
+FIN()

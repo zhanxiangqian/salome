@@ -1,0 +1,63 @@
+DEBUT();
+
+MAIL=LIRE_MAILLAGE(FORMAT='MED',);
+
+%(material_key)s
+
+%(mesh_change_key)s
+
+MODX=AFFE_MODELE(MAILLAGE=MAIL,
+                 AFFE=_F(GROUP_MA=(%(all_mesh_group)s),
+                         PHENOMENE='MECANIQUE',
+                         MODELISATION='%(modelisation_key)s',),);
+                                                      
+RAMPE=DEFI_FONCTION(NOM_PARA='INST',
+                    VALE=(0.0,0.0,1.0,1.0,),
+                    PROL_DROITE='LINEAIRE',
+                    PROL_GAUCHE='LINEAIRE',);
+                    
+L_INST=DEFI_LIST_REEL(DEBUT=0.0,
+                      INTERVALLE=_F(JUSQU_A=1.0,
+                                    NOMBRE=1,),);
+
+%(bond_contact_definition_key)s
+%(contact_definition_key)s
+
+%(mechanical_constraints_key)s
+
+RESU=STAT_NON_LINE(
+                SOLVEUR=_F(SYME='OUI',),
+                MODELE=MODX,
+                CHAM_MATER=MATE,
+                EXCIT=(_F(CHARGE=CHARC),
+                       _F(CHARGE=CHARF,
+                          FONC_MULT=RAMPE,),%(has_bond_contact_key)s),
+                %(has_friction_contact_key)s      
+                COMP_ELAS=_F(RELATION='ELAS',),
+                INCREMENT=_F(LIST_INST=L_INST,),
+                NEWTON=_F(MATRICE='TANGENTE',
+                          REAC_INCR=1
+                         ),
+                CONVERGENCE=_F(ITER_GLOB_MAXI=20),
+                );
+
+RESU=CALC_ELEM(reuse=RESU,
+               MODELE=MODX,
+               CHAM_MATER=MATE,
+               RESULTAT=RESU,
+               OPTION=('SIEQ_ELNO',),
+               EXCIT=(_F(CHARGE=CHARC),
+                       _F(CHARGE=CHARF,
+                          FONC_MULT=RAMPE,),),);
+
+RESU=CALC_NO(reuse=RESU,
+             RESULTAT=RESU,
+             OPTION=('SIEQ_NOEU', ),);
+
+IMPR_RESU(FORMAT='MED',
+          UNITE=80,
+          RESU=_F(MAILLAGE=MAIL,
+                  RESULTAT=RESU,
+                  NOM_CHAM=('SIEQ_ELNO','SIEQ_NOEU','DEPL',),),);
+
+FIN();
