@@ -265,18 +265,33 @@ class Ast_D_of_F_Model(WC.AstConditionsModel):
         flags = qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled
         if (midx.row() + 1 == self.rowCount(ROOT_MIDX)):
             flags = qtc.Qt.ItemIsSelectable
-        elif(midx.column() == 0 and midx.row() + 1 <  self.rowCount(ROOT_MIDX)): #若不是第一列则ischeckabled
-            flags = qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled
-        elif(midx.column() > 0 and midx.row() + 1 <  self.rowCount(ROOT_MIDX)):
-            flags = qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled | qtc.Qt.ItemIsUserCheckable
+        else:
+            flags = self._sel.flaglists[midx.row()][midx.column()]
+        log_gui.debug("flags: %d row: %d column: %d",self._sel.flaglists[midx.row()][midx.column()],midx.row(),midx.column())
         return flags
         
     def setData(self, midx, value,  role = qtc.Qt.EditRole):
         if(role == qtc.Qt.CheckStateRole):
-           self._sel._checklists[midx.row()][midx.column()],_ = value.toInt()
+           state,_ = value.toInt()
+           self._sel.checklists[midx.row()][midx.column()] = state
+           log_gui.debug("setData before: %d row: %d column: %d",self._sel.flaglists[midx.row()][midx.column()],midx.row(),midx.column())
+           if (state == qtc.Qt.Unchecked):
+              #self._sel.flaglists[midx.row()][midx.column()] &= ~(qtc.Qt.ItemIsEditable) 
+              self._sel.flaglists[midx.row()][midx.column()] = self._sel.flaglists[midx.row()][midx.column()] & (~(qtc.Qt.ItemIsEditable) )
+           else:
+              #self._sel.flaglists[midx.row()][midx.column()] |= qtc.Qt.ItemIsEditable
+              self._sel.flaglists[midx.row()][midx.column()] = self._sel.flaglists[midx.row()][midx.column()] | qtc.Qt.ItemIsEditable
+           log_gui.debug("setData: %d row: %d column: %d ",self._sel.flaglists[midx.row()][midx.column()],midx.row(),midx.column())
+           """row = 0
+           for flist in self._sel.flaglists:
+               column = 0
+               for a in flist:
+                   log_gui.debug("row: %d column: %d flag: %d",row,column,self._sel.flaglists[row][column])
+                   column += 1
+           row += 1"""
            return True
-           
         else:
+           log_gui.debug("setData: %d row: %d column: %d",self._sel.flaglists[midx.row()][midx.column()],midx.row(),midx.column())
            return WC.AstConditionsModel.setData(self,value,role)
         
     def data(self, midx, role):
@@ -297,15 +312,18 @@ class Ast_D_of_F_Model(WC.AstConditionsModel):
               #log_gui.debug("use ForegroundRole role %s and res.type %s", role, type(res))
         else:
            if role in (qtc.Qt.DisplayRole, qtc.Qt.EditRole):
-              cond = self._sel.give_cond(midx.row())
-              res = qtc.QVariant(cond[midx.column()])
+              if (self._sel.checklists[midx.row()][midx.column()] == qtc.Qt.Checked):
+                 cond = self._sel.give_cond(midx.row())
+                 res = qtc.QVariant(cond[midx.column()])
+              else:
+                 res = QNULL
            elif role == qtc.Qt.TextAlignmentRole:
               res = qtc.QVariant(qtc.Qt.AlignHCenter | qtc.Qt.AlignVCenter)
            elif role == qtc.Qt.CheckStateRole:
               if (midx.column() == 0):
                  res = QNULL
               else: 
-                 res = qtc.QVariant(self._sel._checklists[midx.row()][midx.column()])
+                 res = qtc.QVariant(self._sel.checklists[midx.row()][midx.column()])
            else:
               res = QNULL
         return res
@@ -316,7 +334,8 @@ class Ast_D_of_F_Selector(WC.AstConditionsSelector):#用于设置degrees of free
     def __init__(self, data, parent):#condition_type 0 用于degree 2017/2/9
         WC.AstConditionsSelector.__init__(self, data, 0, parent,False)
         self._material_names = data.material_names
-        self._checklists = data.checklists #二维数组
+        self.checklists = data.checklists #二维数组
+        self.flaglists = []
         
     def valid_by_group(self):
         if(self._data.grouptypesel != 0):
@@ -337,11 +356,11 @@ class Ast_D_of_F_Selector(WC.AstConditionsSelector):#用于设置degrees of free
                      head_names.append(u"DZ")
                      self._default_cond.append(0.0)
 
-            checklist = [qtc.Qt.Unchecked]*len(head_names)
+            checklist = [qtc.Qt.Checked]*len(head_names)
             val_list = [.0]*len(head_names)
             self._default_cond = [grp_names[0]] + val_list
             self._default_check = checklist
-               
+            self._default_flag = [qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled] + [qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled | qtc.Qt.ItemIsUserCheckable] * (len(head_names) - 1) #第一列的数据不需要check 
             model = Ast_D_of_F_Model(self, head_names)
             self._tab.setModel(model)
             self._tab.setEnabled(True)
@@ -362,14 +381,15 @@ class Ast_D_of_F_Selector(WC.AstConditionsSelector):#用于设置degrees of free
             
     def add_cond(self):
         """Add a condition to the table"""
-        if not self._default_cond or not self._default_check:
+        if not self._default_cond or not self._default_check or not self._default_flag:
             return
         model = self._tab.model()
         conds = self._conds
         end_idx = len(conds)
         model.beginInsertRows(qtc.QModelIndex(), end_idx, end_idx)
         conds.append(list(self._default_cond))
-        self._checklists.append(list(self._default_check))
+        self.checklists.append(list(self._default_check))
+        self.flaglists.append(list(self._default_flag))
         comb = qt.QComboBox(self._tab)
         comb.addItems(self._grp_names)
         connect(comb, SIG("currentIndexChanged (const QString&)"),model.setgroup)
@@ -378,6 +398,15 @@ class Ast_D_of_F_Selector(WC.AstConditionsSelector):#用于设置degrees of free
         idx = model.index(end_idx, self._groupcolumn, ROOT_MIDX)
         self._tab.setIndexWidget(idx, comb)
         self.notify_wizard()
+        
+    def remove_cond(self):
+        model = self._tab.model()
+        model.beginRemoveRows(qtc.QModelIndex(), idx, idx)
+        del self._conds[idx]
+        del self._combos[idx]
+        del self.flaglists[idx]
+        model.endRemoveRows()
+        self.emit_datachanged()
         
 class Create_Dock(qt.QDockWidget):
     def __init__(self, mod):
@@ -409,6 +438,8 @@ class Create_Dock(qt.QDockWidget):
         vspacer = qt.QSpacerItem(20, 10, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
         vlayout.addItem(vspacer)
 
+        label_for_model = qt.QLabel(u"Adding Material on groups",self)
+        vlayout.addWidget(label_for_model)
         #grid = qt.QGridLayout()
         #young = WC.YoungModulus()
         #young.add_to(qt.QWidget(), grid, 0)

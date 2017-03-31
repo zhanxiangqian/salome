@@ -1455,19 +1455,23 @@ class AstConditionsSelector(WC.AstObject):
         else:
            """Remove a condition from its index"""
            log_gui.debug("remove a row by index = %s total = %s", idx, self.give_conds_nb())
-           model = self._tab.model()
-           model.beginRemoveRows(qtc.QModelIndex(), idx, idx)
-           del self._conds[idx]
-           if (self._btns != None):
-               del self._btns[idx]
-           del self._combos[idx]
-           model.endRemoveRows()
-           self.emit_datachanged()
+           self.remove_cond(idx)
+           
     def get_view(self):
         return self._tab
     def give_default_val(self):
            return self._default_cond
-        
+           
+    def remove_cond(self,idx):
+        model = self._tab.model()
+        model.beginRemoveRows(qtc.QModelIndex(), idx, idx)
+        del self._conds[idx]
+        if (self._btns != None):
+            del self._btns[idx]
+        del self._combos[idx]
+        model.endRemoveRows()
+        self.emit_datachanged()
+           
     def add_to(self, main_lay):
         """Add the table to the layout and keep the selector
         alive by using the layout parent widget
@@ -1541,6 +1545,7 @@ class AstMaterialSelector(AstConditionsSelector):#用于设置group 的材料（
     def __init__(self, data, parent):#condition_type 0  2017/2/9
         AstConditionsSelector.__init__(self, data, 1, parent, False)
         self._material_names = data.material_names
+        self._combos_mtl = []
         
     def valid_by_group(self):
         if(self._data.grouptypesel != 0):
@@ -1580,6 +1585,15 @@ class AstMaterialSelector(AstConditionsSelector):#用于设置group 的材料（
         else:
             self._build()
             
+    def remove_cond(self,idx):
+        model = self._tab.model()
+        model.beginRemoveRows(qtc.QModelIndex(), idx, idx)
+        del self._conds[idx]
+        del self._combos_mtl[idx]
+        del self._combos[idx]
+        model.endRemoveRows()
+        self.emit_datachanged()
+        
     def add_cond(self):
         """Add a condition to the table"""
         if not self._default_cond:
@@ -1598,7 +1612,9 @@ class AstMaterialSelector(AstConditionsSelector):#用于设置group 的材料（
         comb_mtl.addItems(self._material_names)
         connect(comb_grp, SIG("currentIndexChanged (const QString&)"),model.setmaterial)        
         
-        self._combos.append(comb_mtl)
+        self._combos.append(comb_grp)
+        self._combos_mtl.append(comb_mtl)
+        
         model.endInsertRows()
         grpidx = model.index(end_idx, 0, ROOT_MIDX)
         mtlidx = model.index(end_idx, 1, ROOT_MIDX)
