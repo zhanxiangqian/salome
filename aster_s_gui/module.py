@@ -722,53 +722,17 @@ class AsterModule(object):
              stracker.wrap([aster_s.FromComm], update_mesh),
              "Update mesh by using Eficas", "actions/mesh_update.png"),
              #added by zxq at 2017/2/7
-            ("linear-static-model-define", "Model define", run_linear_static_model_define,
-             "Select a kind of model to work on", "actions/edit-case.png"),
+            ("static_model_module", "Static structural", run_linear_static,
+             "Select a kind of model to work on", "actions/run-linear-elastic.png"),
              
-            ("linear-static-mesh-selection", "Mesh selection", run_linear_static_mesh_selection,
-             "Select a mesh", "actions/edit-case.png"),
+            ("modal_analysis_module", "Modal analysis", run_modal_analysis,
+             "Select a mesh", "actions/run-modal-analysis.png"),
              
-            ("linear-static-material-properties", "Material properies", run_linear_static_material_properties,
-             "Material properties definitions", "actions/edit-case.png"),
+            ("linear_thermic_module", "Linear thermic", run_linear_thermic,
+             "Material properties definitions", "actions/run-linear-thermic.png"),
              
-            ("linear-static-boundaries-degrees-conditions", "Boundaries degrees conditions", run_linear_static_boundaries_degrees_conditions,
-             "Add imposed degrees of freedom on groups", "actions/edit-case.png"),
-             
-            ("linear-static-boundaries-pressure-conditions", "Boundaries pressure conditions", run_linear_static_boundaries_pressure_conditions,
-             "Add pressure on meshes groups", "actions/edit-case.png"),
-             
-            ("linear-thermic-model-define", "Model define", run_linear_thermic_model_define,
-             "Select a kind of model to work on", "actions/edit-case.png"),
-             
-            ("linear-thermic-mesh-selection", "Mesh selection", run_linear_thermic_mesh_selection,
-             "Select a mesh", "actions/edit-case.png"),
-             
-            ("linear-thermic-material-properties", "Material properies", run_linear_thermic_material_properties,
-             "Material properties definitions", "actions/edit-case.png"),
-             
-            ("linear-thermic-boundaries-degrees-conditions", "Boundaries degrees conditions", run_linear_thermic_boundaries_degrees_conditions,
-             "Add imposed degrees of freedom on groups", "actions/edit-case.png"),
-             
-            ("linear-thermic-boundaries-pressure-conditions", "Boundaries pressure conditions", run_linear_thermic_boundaries_pressure_conditions,
-             "Add pressure on meshes groups", "actions/edit-case.png"),
-             
-             ("modal-analysis-model-define", "Model define", run_modal_analysis_thermic_model_define,
-             "Select a kind of model to work on", "actions/edit-case.png"),
-             
-            ("modal-analysis-mesh-selection", "Mesh selection", run_modal_analysis_mesh_selection,
-             "Select a mesh", "actions/edit-case.png"),
-            
-            ("modal-analysis-elementary-characteristics", "Elementary characteristics", run_modal_analysis_elementary_characteristics,
-             "Elementary characteristics", "actions/edit-case.png"),
- 
-            ("modal-analysis-material-properties", "Material properies", run_modal_analysis_material_properties,
-             "Material properties definitions", "actions/edit-case.png"),
-             
-            ("modal-analysis-boundaries-conditions", "Boundaries conditions", run_modal_analysis_boundaries_conditions,
-             "Added imposed degrees of freedom on groups", "actions/edit-case.png"),
-             
-            ("modal-analysis-number-of-modes", "Number of modes", run_modal_analysis_number_of_modes,
-             "Number of modes", "actions/edit-case.png"),
+            ("crack_analysis_module", "Crack analysis", run_crack_analysis,
+             "Add imposed degrees of freedom on groups", "actions/run-crack-analysis.png"),
              #added 
         ]
         if self.testing:
@@ -811,21 +775,21 @@ class AsterModule(object):
                 main_menu.add_action(actions[key])"""
         menus_desc = ["add","update-mesh", "edit", "copy", "rename", "remove", "run", "stop", "status", "run-astk", "run-eficas"]
         pagename =   ["linear-elastic", "modal-analysis", "linear-thermic", "Crack-analysis"]
-        linear_static_page_actions = ["linear-static-model-define", "linear-static-mesh-selection", "linear-static-material-properties", "linear-static-boundaries-degrees-conditions", "linear-static-boundaries-pressure-conditions"]
-        modal_analysis_page_actions = ["modal-analysis-model-define", "modal-analysis-mesh-selection", "modal-analysis-elementary-characteristics", "modal-analysis-material-properties", "modal-analysis-boundaries-conditions", "modal-analysis-number-of-modes"]
-        linear_thermic_page_actions = ["linear-thermic-model-define", "linear-thermic-mesh-selection", "linear-thermic-material-properties", "linear-thermic-boundaries-degrees-conditions", "linear-thermic-boundaries-pressure-conditions"]
+        page_actions = ["static_model_module", "modal_analysis_module", "linear_thermic_module", "crack_analysis_module"]
+        #modal_analysis_page_actions = ["modal-analysis-model-define", "modal-analysis-mesh-selection", "modal-analysis-elementary-characteristics", "modal-analysis-material-properties", "modal-analysis-boundaries-conditions", "modal-analysis-number-of-modes"]
+        #linear_thermic_page_actions = ["linear-thermic-model-define", "linear-thermic-mesh-selection", "linear-thermic-material-properties", "linear-thermic-boundaries-degrees-conditions", "linear-thermic-boundaries-pressure-conditions"]
         
         op_page = Page("Operations","Solver", menus_desc)
         op_page.build(self.sqt, actions)
         
-        ms_page = Page("Modal analysis", "Sets", modal_analysis_page_actions)
+        ms_page = Page("Analysis", "Sets", page_actions)
         ms_page.build(self.sqt, actions)
         
-        lt_page = Page("Linear thermic", "Sets", linear_thermic_page_actions)
-        lt_page.build(self.sqt, actions)
+        #lt_page = Page("Linear thermic", "Sets", linear_thermic_page_actions)
+        #lt_page.build(self.sqt, actions)
         
-        le_page = Page("linear-elastic","Sets", linear_static_page_actions)
-        le_page.build(self.sqt, actions)
+        #le_page = Page("linear-elastic","Sets", linear_static_page_actions)
+        #le_page.build(self.sqt, actions)
 
     def _build_toolbar(self):
         """Build the toolbar"""
@@ -985,75 +949,24 @@ class AsterModule(object):
         self.sqt.message(text)
 
 #added by zxq 
-def run_linear_static_model_define(mod):
+def run_linear_static(mod):
     from aster_s_gui.wizards import linear_static as LS
     dock = LS.Create_Dock(mod)
     mod.give_qtwid().addDockWidget(qtc.Qt.RightDockWidgetArea,dock)
     
-def run_linear_static_mesh_selection(mod):
+def run_modal_analysis(mod):
     from aster_s_gui.wizards import modal_analysis as MA
     dock = MA.Create_MADock(mod)
     mod.give_qtwid().addDockWidget(qtc.Qt.RightDockWidgetArea,dock)
 
-def run_linear_static_material_properties(mod):
+def run_linear_thermic(mod):
     from aster_s_gui.wizards import linear_thermic as LT
     dock = LT.Create_LTDock(mod)
     mod.give_qtwid().addDockWidget(qtc.Qt.RightDockWidgetArea,dock)
 
 
-def run_linear_static_boundaries_degrees_conditions(mod):
+def run_crack_analysis(mod):
     from aster_s_gui.wizards import XFEM as XFEM
     dock = XFEM.Create_XFEMDock(mod)
     mod.give_qtwid().addDockWidget(qtc.Qt.RightDockWidgetArea,dock)
 
-def run_linear_static_boundaries_pressure_conditions(mod):
-    from aster_s_gui.wizards import XFEM as XFEM
-    dock = XFEM.create_wizard(mod)
-    dock.run()
-
-
-
-def run_linear_thermic_model_define(mod):
-    from aster_s_gui.wizards import linear_static as LS
-    return 0
-
-def run_linear_thermic_mesh_selection(mod):
-    from aster_s_gui.wizards import linear_static as LS
-    return 0
-    
-def run_linear_thermic_material_properties(mod):
-    from aster_s_gui.wizards import linear_static as LS
-    return 0
-
-def run_linear_thermic_boundaries_degrees_conditions(mod):
-    from aster_s_gui.wizards import linear_static as LS
-    return 0
-    
-def run_linear_thermic_boundaries_pressure_conditions(mod):
-    from aster_s_gui.wizards import linear_static as LS
-    return 0
-
-
-def run_modal_analysis_thermic_model_define(mod):
-    from aster_s_gui.wizards import linear_static as LS
-    return 0
-
-def run_modal_analysis_mesh_selection(mod):
-    from aster_s_gui.wizards import linear_static as LS
-    return 0
-
-def run_modal_analysis_elementary_characteristics(mod):
-    from aster_s_gui.wizards import linear_static as LS
-    return 0
-
-def run_modal_analysis_material_properties(mod):
-    from aster_s_gui.wizards import linear_static as LS
-    return 0
-
-def run_modal_analysis_boundaries_conditions(mod):
-    from aster_s_gui.wizards import linear_static as LS
-    return 0
-
-def run_modal_analysis_number_of_modes(mod):
-    from aster_s_gui.wizards import linear_static as LS
-    return 0
