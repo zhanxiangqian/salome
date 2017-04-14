@@ -1396,7 +1396,7 @@ class AstConditionsSelector(WC.AstObject):
           self._btns = []
         else:
           self._btns = None
-        self._combos = []
+        self._combos = [] #用于Group的选择
         self._groupcolumn = 0
         if condition_type > 1:
            self._groupcolumn = 1
@@ -1521,6 +1521,7 @@ class AstConditionsSelector(WC.AstObject):
     def notify_wizard(self):
         """Notify  that a change occured"""
         self.emit_datachanged()
+        self._tab.update()
         #self.emit(SIG("condition_update"), self._conds or None)
 
     def reset(self):#所有数据置0

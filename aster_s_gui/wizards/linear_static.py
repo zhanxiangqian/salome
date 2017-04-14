@@ -12,6 +12,8 @@ import aster_s_gui.wizards.common as WC
 from aster_s.utils import log_gui
 QNULL = WC.QNULL
 ROOT_MIDX = WC.ROOT_MIDX
+invalided = "--"
+import copy
 
 def is_valid_mesh(cexp, mesh, mod):
     """A valid mesh needs to have groups for pressure"""
@@ -316,7 +318,7 @@ class Ast_D_of_F_Model(WC.AstConditionsModel):
                  cond = self._sel.give_cond(midx.row())
                  res = qtc.QVariant(cond[midx.column()])
               else:
-                 res = QNULL
+                 res = invalided
            elif role == qtc.Qt.TextAlignmentRole:
               res = qtc.QVariant(qtc.Qt.AlignHCenter | qtc.Qt.AlignVCenter)
            elif role == qtc.Qt.CheckStateRole:
@@ -351,13 +353,11 @@ class Ast_D_of_F_Selector(WC.AstConditionsSelector):#用于设置degrees of free
             if (len(grp_names)>0):
                if self._condition_type==0:
                   head_names =[u"Group", u"DX", u"DY"]
-                  self._default_cond = [grp_names[0]] + [0.0, 0.0]
                   if (dim == WCD.Dim_Type.Three_Dim):
                      head_names.append(u"DZ")
-                     self._default_cond.append(0.0)
 
             checklist = [qtc.Qt.Checked]*len(head_names)
-            val_list = [.0]*len(head_names)
+            val_list = [.0]*(len(head_names)-1)
             self._default_cond = [grp_names[0]] + val_list
             self._default_check = checklist
             self._default_flag = [qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled] + [qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled | qtc.Qt.ItemIsUserCheckable] * (len(head_names) - 1) #第一列的数据不需要check 
@@ -381,7 +381,7 @@ class Ast_D_of_F_Selector(WC.AstConditionsSelector):#用于设置degrees of free
             
     def add_cond(self):
         """Add a condition to the table"""
-        if not self._default_cond or not self._default_check or not self._default_flag:
+        if not self._default_cond:
             return
         model = self._tab.model()
         conds = self._conds
@@ -399,12 +399,187 @@ class Ast_D_of_F_Selector(WC.AstConditionsSelector):#用于设置degrees of free
         self._tab.setIndexWidget(idx, comb)
         self.notify_wizard()
         
-    def remove_cond(self):
+    def remove_cond(self,idx):
         model = self._tab.model()
         model.beginRemoveRows(qtc.QModelIndex(), idx, idx)
         del self._conds[idx]
         del self._combos[idx]
         del self.flaglists[idx]
+        model.endRemoveRows()
+        self.emit_datachanged()
+        
+class Ast_Pressure_Model(WC.AstConditionsModel):
+    def __init__(self, sel, header_names):
+        WC.AstConditionsModel.__init__(self,sel,header_names)
+        
+    def flags(self, midx):
+        """Tell to Qt mechanism that each cell is enabled and editable"""
+        flags = qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled
+        if (midx.row() + 1 == self.rowCount(ROOT_MIDX)):
+            flags = qtc.Qt.ItemIsSelectable
+        else:
+            cond = self._sel.give_cond(midx.row())
+            if(cond.__contains__(u"Pressure")):
+               if(midx.column() > 2):
+                 flags = qtc.Qt.ItemIsSelectable
+               else:
+                 flags = qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled
+        log_gui.debug("flags: %d row: %d column: %d",flags,midx.row(),midx.column())
+        return flags
+        
+    def set_pressure_type(self,typename):
+        midx = self._sel.get_view().currentIndex()
+        comb = self.sender()
+        if (midx.row() + 1 == self.rowCount(ROOT_MIDX) or midx.column() + 1 == self.columnCount(ROOT_MIDX)):
+           return
+        else:
+           cond = self._sel.give_cond(midx.row())
+           cond[midx.column()] = typename
+           log_gui.debug("set_pressure_type with want data %s cond_data %s", typename, cond)
+           self._sel.notify_wizard()
+        log_gui.debug("set_pressure_type with want data %s comb %s", typename, comb)
+        
+    def data(self, midx, role):
+        """Provide data for each cell in the display role"""
+        res = QNULL
+        if (midx.row() + 1 == self.rowCount(ROOT_MIDX) ):
+           if (role  == qtc.Qt.DisplayRole):
+              vallist = self._sel.give_default_val()
+              res = qtc.QVariant("----")
+           elif(role == qtc.Qt.TextAlignmentRole):
+              res = qtc.QVariant(qtc.Qt.AlignHCenter | qtc.Qt.AlignVCenter)
+           else:
+              res = QNULL
+              #log_gui.debug("use ForegroundRole role %s and res.type %s", role, type(res))
+           #elif role == qtc.Qt.ForegroundRole:
+              #qcolor = qt.QColor(0,240,240)
+              #res = qt.QBrush(0,240,240)
+              #log_gui.debug("use ForegroundRole role %s and res.type %s", role, type(res))
+        else:
+           cond = self._sel.give_cond(midx.row())
+           if role in (qtc.Qt.DisplayRole, qtc.Qt.EditRole):
+              if (self.flags(midx) == (qtc.Qt.ItemIsEditable | qtc.Qt.ItemIsEnabled)):
+                 res = qtc.QVariant(cond[midx.column()])
+              else:
+                 res = QNULL
+           elif role == qtc.Qt.TextAlignmentRole:
+              res = qtc.QVariant(qtc.Qt.AlignHCenter | qtc.Qt.AlignVCenter)
+           elif role == qtc.Qt.DecorationRole:
+              if (cond.__contains__(u"Pressure")):
+                 if(midx.column()  == 2):
+                    pix = qt.QPixmap(32,32);
+                    pix.fill();
+                    rct = pix.rect();
+                    paint = qt.QPainter(pix);
+                    paint.drawText(rct, qtc.Qt.AlignCenter, u"P:");
+                    res = pix
+                 else: 
+                    res = QNULL
+              elif (cond.__contains__(u"Force_Face")):
+                 if(midx.column()  > 1):
+                    tip = [u"",u"",u"FX:",u"FY:",u"FZ:"]
+                    pix = qt.QPixmap(32,32);
+                    pix.fill();
+                    rct = pix.rect();
+                    paint = qt.QPainter(pix);
+                    paint.drawText(rct, qtc.Qt.AlignCenter, tip[midx.column()]);
+                    res = pix
+                 else: 
+                    res = QNULL             
+              elif (cond.__contains__(u"Force_Node")):
+                 if(midx.column()  > 1):
+                    tip = [u"",u"",u"MX:", u"MY:", u"MZ:"]
+                    pix = qt.QPixmap(32,32);
+                    pix.fill();
+                    rct = pix.rect();
+                    paint = qt.QPainter(pix);
+                    paint.drawText(rct, qtc.Qt.AlignCenter, tip[midx.column()]);
+                    res = pix
+                 else: 
+                    res = QNULL
+           else:
+              res = QNULL
+        return res
+        
+class Ast_Pressure_Selector(WC.AstConditionsSelector):#用于设置degrees of freedom
+    """Allow to set Material on proposed groups.
+    """
+    def __init__(self, data, parent):#condition_type 0 用于degree 2017/2/9
+        WC.AstConditionsSelector.__init__(self, data, 0, parent,False)
+        self.head_name = [u"Group", u"Pressure\n Type", u"", u""]
+        self._pressure_types = [u"Pressure", u"Force_Face", u"Force_Node"]
+        self._prs_type_combos = []
+    def valid_by_group(self):
+        if(self._data.grouptypesel != 0):
+            cexp = self._data.exp_store
+            exp = cexp.give_exp("pressure")
+            mesh = self._data.mesh
+            log_gui.debug("valid_by_group by group type %s, mesh %s", self._data.grouptypesel,mesh)
+            grp_names = exp.find_groups(mesh)
+            self._grp_names = grp_names
+            self._valided = True
+            
+            dim = self._data.get_dim()
+            if (len(grp_names)>0):
+               if self._condition_type==0:
+                  head_names = copy.copy(self.head_name)
+                  if (dim == WCD.Dim_Type.Three_Dim):
+                     head_names.append(u"")
+            log_gui.debug("valid_by_group head_names: %d",len(head_names))
+            print head_names
+
+            val_list = [.0]*(len(head_names) - 2)
+            self._default_cond = [grp_names[0], u"Pressure"] + val_list
+            model = Ast_Pressure_Model(self, head_names)
+            self._tab.setModel(model)
+            self._tab.setEnabled(True)
+            self._tab.horizontalHeader().setClickable(True)
+            self._tab.setItemDelegate(WC.ValueDelegate(self))
+            self._tab.setItemDelegateForColumn(0, WC.GroupDelegate(self, self._grp_names)) 
+            self._tab.setItemDelegateForColumn(1, WC.GroupDelegate(self, self._pressure_types)) 
+            self.add_cond()
+            
+            width = [80,90,60,60,60,60,50,50]
+            icolumn = 0
+            for iname in head_names:
+                self._tab.setColumnWidth(icolumn,width[icolumn]) 
+                icolumn += 1
+            self.is_reseted = False
+        else:
+            self._build()
+            
+    def add_cond(self):
+        """Add a condition to the table"""
+        if not self._default_cond:
+            return
+        model = self._tab.model()
+        conds = self._conds
+        end_idx = len(conds)
+        model.beginInsertRows(qtc.QModelIndex(), end_idx, end_idx)
+        conds.append(list(self._default_cond))
+        grp_comb = qt.QComboBox(self._tab)
+        grp_comb.addItems(self._grp_names)
+        connect(grp_comb, SIG("currentIndexChanged (const QString&)"),model.setgroup)
+        self._combos.append(grp_comb)
+        
+        pressure_type_comb = qt.QComboBox(self._tab)
+        pressure_type_comb.addItems(self._pressure_types)
+        connect(pressure_type_comb, SIG("currentIndexChanged (const QString&)"),model.set_pressure_type)
+        self._prs_type_combos.append(pressure_type_comb)
+        
+        model.endInsertRows()
+        idx = model.index(end_idx, self._groupcolumn, ROOT_MIDX)
+        self._tab.setIndexWidget(idx, grp_comb)
+        idx = model.index(end_idx, 1, ROOT_MIDX)
+        self._tab.setIndexWidget(idx, pressure_type_comb)
+        self.notify_wizard()
+        
+    def remove_cond(self,idx):
+        model = self._tab.model()
+        model.beginRemoveRows(qtc.QModelIndex(), idx, idx)
+        del self._conds[idx]
+        del self._combos[idx]
+        del self._prs_type_combos[idx]
         model.endRemoveRows()
         self.emit_datachanged()
         
@@ -465,7 +640,7 @@ class Create_Dock(qt.QDockWidget):
         label_for_model = qt.QLabel(u"Adding pressure on meshes groups",self)
         vlayout.addWidget(label_for_model)
         
-        pressure_sel = WC.AstConditionsSelector(self.data,1,self)
+        pressure_sel = Ast_Pressure_Selector(self.data,self)
         connect(group_sel,SIG("group_valided"),pressure_sel.valid_by_group)
         pressure_sel.add_to(vlayout)
         
